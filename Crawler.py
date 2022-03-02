@@ -32,3 +32,8 @@ logs_rel = logs.load(filename)
 
 all_comments, all_infos = browser.load_information(logs_rel)
 browser.save_dataframes(all_comments, all_infos)
+
+import pandas as pd
+pd.__version__
+
+
