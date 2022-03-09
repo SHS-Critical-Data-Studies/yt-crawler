@@ -46,22 +46,42 @@ def start_browser(url="https://www.youtube.com"):
     :param url:
     :return: the selenium browser instance
     """
-    from webdriver_manager.chrome import ChromeDriverManager
+    env_key = "YTCRAWLER_BROWSER"
+    path = os.getcwd()
 
+    browser = os.environ.get(env_key)
+    if(browser == None):
+        print("No browser defined: ")
+        browser = input()
+        browser = os.environ[env_key] = browser
+    else:
+        print("Defined browser: {}", browser)
 
-    chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--mute-audio")
-    chrome_options.add_argument("--lang=en")
-    chrome_options.add_argument("--start-maximized")
-    #chrome_options.add_argument('--headless')
-    chrome_options.add_extension("extensions/abp.crx")
-    
-    browser = webdriver.Chrome(service = Service(ChromeDriverManager().install()),options=chrome_options)
+    if browser == "chrome":
+        from webdriver_manager.chrome import ChromeDriverManager   
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.add_argument("--mute-audio")
+        chrome_options.add_argument("--lang=en")
+        chrome_options.add_argument("--start-maximized")
+        #chrome_options.add_argument('--headless')
+        chrome_options.add_extension("extensions/abp.crx")
+        
+        browser = webdriver.Chrome(service = Service(ChromeDriverManager().install()),options=chrome_options)
+    elif browser == "firefox":
+        options = webdriver.FirefoxOptions()
+        options.set_preference("media.autoplay.default", 0)  # Allow video auto-play
+        options.set_preference("media.volume_scale", "0.0")  # Mute sound
+
+        browser = webdriver.Firefox(options=options)
+        browser.install_addon(path + "/extensions/firefox/ublock_origin.xpi")
+    else:
+        os.environ.pop(env_key)
+        raise ValueError("Unknown browser: {}".format(browser))
+
     browser.get(url)
     chld = browser.window_handles[0]
     browser.switch_to.window(chld)
-    time.sleep(2)
-    # Enlève la pop-up de bienvenue sur YouTube
+    time.sleep(2)    # Remove consent popup
     buttons = browser.find_element(By.LINK_TEXT,'I AGREE')
     buttons.click()
     
