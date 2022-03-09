@@ -7,7 +7,6 @@ from selenium.webdriver.common.action_chains import ActionChains
 import time
 import pandas as pd
 from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
 import spacy
 from spacy_langdetect import LanguageDetector
 from spacy.language import Language
@@ -47,6 +46,9 @@ def start_browser(url="https://www.youtube.com"):
     :param url:
     :return: the selenium browser instance
     """
+    from webdriver_manager.chrome import ChromeDriverManager
+
+
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--mute-audio")
     chrome_options.add_argument("--lang=en")
