@@ -21,28 +21,28 @@ jupyter:
 ```python
 from utils import browser
 from utils import logs
-import time
+from datetime import datetime
 ```
 
 ```python
 EXP_ID = 1
-visited_links = browser.run_experiment()
+visited_links, all_comments, all_infos = browser.run_experiment()
 ```
 
 ```python
 # Save the links retrieved during random walk
-filename = f"{EXP_ID}_{time.time()}.txt"
-logs.dump(filename, visited_links)
+filename = datetime.now().strftime("%Y_%m_%d.%H_%M_%S")
+logs.dump(f"{filename}.txt", visited_links)
 ```
 
 ```python
 # Retrieve the information of the watched videos
-logs_rel = logs.load(filename)
+logs_rel = logs.load(f"{filename}.txt")
 ```
 
 ```python
 all_comments, all_infos = browser.load_information(logs_rel)
-browser.save_dataframes(all_comments, all_infos)
+browser.save_dataframes(all_comments, all_infos, path=f'data/{filename}.')
 ```
 
 ```python
@@ -51,5 +51,7 @@ pd.__version__
 ```
 
 ```python
-
+print(all_comments.head(10))
+print('-----------------------------------------------------')
+print(all_infos.head(10))
 ```
