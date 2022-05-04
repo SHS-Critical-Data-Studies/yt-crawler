@@ -3,3 +3,5 @@ geckodriver.log
 __pycache__
 .ipnyb_checkpoints
 *.ipynb
+data/*
+*.bz2

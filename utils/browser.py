@@ -12,6 +12,9 @@ import spacy
 from spacy_langdetect import LanguageDetector
 from spacy.language import Language
 from random import randrange
+import numpy as np
+import en_core_web_sm
+nlp = en_core_web_sm.load()
 
 
 @Language.factory('language_detector')
@@ -22,26 +25,28 @@ nlp = spacy.load("en_core_web_sm")
 nlp.add_pipe('language_detector', last=True)
 
 MAX_VIDEO_POSITION = 8
-WATCH_TIME_VIDEOS = 60 * 25
-MAX_TOTAL_TIME = 60 * 60 * 10
+WATCH_TIME_VIDEOS = 60 * 15#25
+MAX_TOTAL_TIME = 60 * 60 * 4#10
 MAX_VIDEOS = 30
 USE_TIME = True
 TIME_BETWEEN_SCROLL = 0.5
 NB_COMMENTS = 100
 LANGUAGE_TO_USE = 'en'
 VIDEO_TIME_OFFSET = 30
+CRITERIA = [lambda x: x<5e3, lambda x: x>=5e3 and x<5e4, lambda x: x>=5e4]
 
 ENCODING = 'utf-8'
 COMPRESSION = 'bz2'
 
 split = '\\' if '\\' in os.getcwd() else '/'
 DATA_PATH = f'data{split}'
-COMMENTS_DF_PATH = "comments.csv.bz2"
-VIDEOS_DF_PATH = "infos.csv.bz2"
-HOME_VIDEOS_DF_PATH = "first.csv.bz2"
+COMMENTS_DF_PATH = f"comments.csv.{COMPRESSION}"
+VIDEOS_DF_PATH = f"infos.csv.{COMPRESSION}"
+HOME_VIDEOS_DF_PATH = f"first.csv.{COMPRESSION}"
+THEME_DF_PATH = f"theme.csv.{COMPRESSION}"
 
 
-def start_browser(url="https://www.youtube.com", browser=None):
+def start_browser(url="https://www.youtube.com", browser=None, agree=True):
     """
     Start and return the browser loaded at a given url
     
@@ -68,6 +73,7 @@ def start_browser(url="https://www.youtube.com", browser=None):
         chrome_options.add_extension(f'{path}{split}extensions{split}abp.crx')
         
         browser = webdriver.Chrome(service = Service(ChromeDriverManager().install()),options=chrome_options)
+        #browser = webdriver.Chrome(executable_path="C:\Program Files\Google\Chrome\Application\chrome.exe", options=chrome_options)
     elif browser == "firefox":
         options = webdriver.FirefoxOptions()
         options.set_preference("media.autoplay.default", 0)  # Allow video auto-play
@@ -79,21 +85,38 @@ def start_browser(url="https://www.youtube.com", browser=None):
     else:
         os.environ.pop(env_key)
         raise ValueError(f"Unknown browser: {browser}")
-
+    
+    #browser.implicitly_wait(10)
     browser.get(url)
     chld = browser.window_handles[0]
     browser.switch_to.window(chld)
     buttons = 0
-    while(0 <= buttons < 5):
-        try :
-            time.sleep(2)    # Remove consent popup
-            buttons = browser.find_element(By.LINK_TEXT,'I AGREE')
-            buttons.click()
-            buttons = -1
-        except Exception as e:
-            buttons += 1
+    if(agree):
+        while(0 <= buttons < 5):
+            try :
+                time.sleep(2)    # Remove consent popup
+                button = browser.find_element(By.LINK_TEXT,'I AGREE')
+                button.click()
+                time.sleep(2)
+                buttons = -1
+            except Exception as e:
+                button = browser.find_elements(By.XPATH,'.//ytd-button-renderer//yt-formatted-string')
+                for btn in button:
+                    if('ACCEPT ALL' in btn.text):
+                        btn.click()
+                        buttons = -2
+                        break
+                time.sleep(2)
+                buttons += 1
     return browser
 
+
+# +
+def get_next_video_id(max_accepted_value, excluded_nb, mean_poisson = 2.5):
+    cur = -1
+    while( cur < 0 or cur >= max_accepted_value or cur in excluded_nb):
+        cur = np.random.poisson(mean_poisson)
+    return cur 
 
 def click_on_next_video(browser, next_video_position=0, first_video=False):
     """
@@ -122,23 +145,114 @@ def click_on_next_video(browser, next_video_position=0, first_video=False):
                 titles.append(el.find_element(By.XPATH, ".//span[@id='video-title']").text)
    
     max_cpt = len(videos)
-    cpt = next_video_position
     cont = True
     
+    cpt = 0
     
-    while cont and cpt<max_cpt:
+    excl = []
+    while cont and len(excl)<max_cpt:
+        cpt = get_next_video_id(max_cpt, excl)
         if nlp(titles[cpt])._.language['language'] == LANGUAGE_TO_USE:
             cont = False
         else:
-            cpt+=1
+            excl.append(cpt)
     
     href = videos[cpt].get_property('href')
-    videos[cpt].click()
-    time.sleep(1)
-    browser.refresh()
+    browser.get(href)
+    #videos[cpt].click()
+    #time.sleep(1)
+    #browser.refresh()
     time.sleep(2)
     
     return href, url
+
+
+# -
+
+def get_starting_videos_diff_magnitude(keywords, criteria=CRITERIA, browser_name=None):
+    """
+    Return a dictionnary of videos satisfying the given criteria
+    Parameters:
+    -----------
+        - criteria: the list of criterion we want to satisfy
+        - keywords: the list of keywords to search in order to get the videos
+        - browser_name: 
+    Returns:
+    -----------
+        - a dictionnary of videos satisfying the given criteria (criterion index -> url of the videos)
+    """
+    
+    br = start_browser("https://www.youtube.com/results?search_query="+"+".join(keywords).replace(' ', '+'), browser_name)
+    time.sleep(10)
+    DIV = "//div[@id='dismissible' and contains(@class,'ytd-video-renderer')]"
+    all_videos = br.find_elements(By.XPATH, DIV)
+    
+    full = False
+    cpt = 0
+    # Dictionnary to store the results
+    result = {}
+    start_scrolls = 0
+    while not full and cpt < 1000:
+        while(cpt >= len(all_videos)):
+            scroll_page(br, 10, from_scrolls=(start_scrolls)*10 + 1)
+            all_videos = br.find_elements(By.XPATH, DIV)
+            start_scrolls += 1
+            time.sleep(1)
+        
+        # get the number of views as int
+        views = br.find_elements(By.XPATH,f"{DIV}//span[contains(@class,'ytd-video-meta-block') and contains(text(),'views')]")[cpt].text
+        views = views[0: len(views)-len(" views")]
+        views = format_like_number(views)
+        
+        if(views !='None'):
+            for i, cr in enumerate(criteria):
+                # Check if the video satisfies any of the remaining criteria
+                if i not in result and (cr(views)):
+                    # Get relevant attributes 
+                    title = br.find_elements(By.XPATH, f"{DIV}//h3[contains(@class,'title-and-badge')]")[cpt].text
+                    desc = br.find_elements(By.XPATH,f"{DIV}//yt-formatted-string[contains(@class, 'style-scope') and contains(@class, 'ytd-video-renderer')  and contains(@class, 'metadata-snippet-text') and not(contains(@class, 'metadata-snippet-text-navigation')) ]")[cpt].text
+
+                    # Since the video satisfies the current criterion
+                    # check that it is an english video by checking the title and the description with spacy
+                    if(nlp(title)._.language['language'] == LANGUAGE_TO_USE and nlp(desc)._.language['language'] == LANGUAGE_TO_USE):
+                        # If both detected languages are indeed, the video satisfies the current criterion
+                        result[i] = br.find_elements(By.XPATH, f"{DIV}//a[@id='thumbnail'][@href]")[cpt].get_property('href')
+                        # as we use mutually exclusive criteria, we cannot satisfy another criterion therefore we can safely break the inner loop
+                        break
+        # Check ending conditions, i.e. if we have aas many criteria as results (i.e. if we find one video for each criterion)
+        full = (len(result) == len(criteria))
+        # Increment the counter to go to the next vidoe
+        cpt +=1
+    br.close()
+    return [result[i] for i in range(len(criteria))]
+
+
+def get_theme(browser_name=None, nb=8):
+    browser = start_browser(url='https://news.google.com/topstories?hl=en&gl=CH', browser=browser_name, agree=False)
+    time.sleep(1)
+    buttons = browser.find_elements(By.XPATH  ,'//span')
+    for btn in buttons:
+        if('I agree' in btn.text):
+            btn.click()
+            break
+    time.sleep(1)
+    world = browser.find_element(By.XPATH, '//div[@aria-label="World"]/a').get_attribute('href')
+    browser.get(world)
+    time.sleep(1)
+    scroll_page(browser, 10)
+    time.sleep(1)
+    titles = browser.find_elements(By.XPATH, '//c-wiz//c-wiz/div/div/div/main/c-wiz/div/div/main/div/div//h3/a')
+    
+    text = []
+    for title in titles:
+        ents = nlp(title.text).ents
+        if (not any(any(str(s).lower() in [str(i).lower() for i in l] for s in ents) for l in text)):
+            text.append(ents)
+            if (nb >= 0 and len(text)>=nb):
+                break
+    browser.close()
+    return [[str(i) for i in l] for l in text]
+
 
 # +
 def time_as_sec(time_str):
@@ -148,9 +262,8 @@ def time_as_sec(time_str):
         time_int += int(i)*coef
         coef*=60
     return time_int
-        
     
-def run_experiment(browser_name=None):
+def run_experiment(filename, browser_name=None, version=None, theme=None, url=None):
     """
     Run one experiment with the set parameters
     """
@@ -159,14 +272,32 @@ def run_experiment(browser_name=None):
     tot=0
     watched_videos = []
     home_video = []
-
+    themes = pd.DataFrame([])
+    
     all_comments = pd.DataFrame([], columns=['video_link', 'channel_link', 'channel_name', 'text', 'nb_like'])
-    all_infos = pd.DataFrame([], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub'])
+    all_infos = pd.DataFrame([], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
     try:
         while (cpt<MAX_VIDEOS and not USE_TIME) or (tot<MAX_TOTAL_TIME and USE_TIME):
             time.sleep(2)
-            next_video = randrange(MAX_VIDEO_POSITION)
-            url, tmp = click_on_next_video(browser, next_video_position=next_video, first_video=(cpt==0))
+            
+            if(theme != None and cpt==0):
+                tmp = get_starting_videos_diff_magnitude(
+                    theme,
+                    [lambda x:(x<1e5 if(url == None) else True)for i in range(16)],
+                    browser_name=browser_name)
+                if(url == None):
+                    url = tmp[0]
+                browser.get(url)
+                themes = pd.DataFrame(theme)
+                
+                time.sleep(2)
+            elif(url != None and cpt==0):
+                tmp = []
+                browser.get(url)
+                time.sleep(2)
+            else:
+                url, tmp = click_on_next_video(browser, first_video=(cpt==0))
+            
             if(cpt==0):
                 home_video = pd.DataFrame(tmp)
             cpt+=1
@@ -179,18 +310,24 @@ def run_experiment(browser_name=None):
             if len(browser.find_elements(By.XPATH, "//button[@title='Play (k)']"))>0:
                 browser.find_element(By.XPATH, "//button[@title='Play (k)']").click()
             
-            video_duration = max(time_as_sec(browser.find_element(By.XPATH,"//div[contains(@class,'ytp-bound-time-right')]").get_property('innerHTML'))-VIDEO_TIME_OFFSET, 0)
-            time_play = min(WATCH_TIME_VIDEOS, video_duration if video_duration != 0 else WATCH_TIME_VIDEOS)
+            video_duration = max(time_as_sec(browser.find_element(By.XPATH,"//div[contains(@class,'ytp-bound-time-right')]").get_property('innerHTML')), 0)
+            vd = max(video_duration-VIDEO_TIME_OFFSET, 0)
+            time_play = min(WATCH_TIME_VIDEOS, vd if vd != 0 else WATCH_TIME_VIDEOS)
+            
             tot += time_play
-            df_comments, df_infos = load_information([url], browser_name=browser_name)
+            df_comments, df_infos = load_information(url, browser_name=browser_name, video_duration=video_duration, time_play=time_play)
             all_comments = pd.concat([all_comments, df_comments])
             all_infos = pd.concat([all_infos, df_infos])
+            
+            # Save the links retrieved during random walk
+            save_dataframes(all_comments, all_infos, home_video, themes,
+                            path=(f'data/{version}/{filename}' if(version!=None) else f'data/{filename}'))
             
             while (time.time() - start_time < time_play):
                 time.sleep(max(1, time_play - (time.time() - start_time)))
     finally:
         browser.close()
-    return watched_videos, all_comments, all_infos, home_video
+    return watched_videos, all_comments, all_infos, home_video, themes
 
 
 # -
@@ -202,11 +339,15 @@ def get_description(browser):
     :param browser: The selenium browser instance
     :return: the description of the video
     """
-    elems = browser.find_elements(By.XPATH, "//div[@id='description' and contains(@class, 'ytd-video-secondary-info-renderer') ]//*[contains(@class, 'yt-formatted-string')]")
     text = ""
-    for el in elems:
-        if(el.tag_name == 'span'):
-            text += el.get_attribute('innerHTML')
+    elems = browser.find_elements(By.XPATH, "//div[@id='description' and contains(@class, 'ytd-video-secondary-info-renderer') ]//*[contains(@class, 'yt-formatted-string')]")
+    if(len(elems) > 0):
+        for el in elems:
+            if(el.tag_name == 'span'):
+                text += el.get_attribute('innerHTML')
+    else:
+        elems = browser.find_element(By.XPATH, "//yt-formatted-string[@class='content style-scope ytd-video-secondary-info-renderer']")
+        text = elems.text
     return text
 
 def get_comments_with_author(browser, nb_comments):
@@ -224,22 +365,24 @@ def get_comments_with_author(browser, nb_comments):
     nb_results = min(len(authors), min(len(likes), min(len(all_text), nb_comments)))
     
     for i in range(nb_results):
+        # Check language
         result.append((authors[i].get_attribute('href'), authors[i].text,all_text[i].text, str(likes[i].text)))
     return result
 
 
-def scroll_page(browser, nb_scrolls, delay=0.5):
+def scroll_page(browser, nb_scrolls, delay=3, from_scrolls = 1):
     """
     Scroll the browser page a given number of time
     :param browser: the selenium browser instance
     :param nb_scrolls: the number of time we should scroll
     :param delay: delay between scroll
     """
-    for i in range(1, nb_scrolls):
-        browser.execute_script("window.scrollTo(1,5000000000000)")
+    for i in range(int(from_scrolls), int(nb_scrolls)):
+        browser.execute_script("const height = window.innerHeight||document.documentElement.clientHeight||document.body.clientHeight;"+
+                 f"window.scrollTo(1,{i} * height);")
         time.sleep(delay)
 
-def get_video_information(browser, url):
+def get_video_information(browser, url, video_duration=None, time_play=None):
     """
     Get all the video information currently loaded in the browser
     :param browser: the selenium browser instance
@@ -281,6 +424,8 @@ def get_video_information(browser, url):
         infos.append(browser.find_element(By.XPATH, "//yt-formatted-string[@id='owner-sub-count']").text.split()[0])
     except Exception as e:
         infos.append('None')
+    infos.append(video_duration)
+    infos.append(time_play)
     
     return infos
 
@@ -290,37 +435,39 @@ def format_like_number(text):
     :param text: the text that should be converted to number
     :return: the number in int
     """
-    
-    if type(text)==type(0) or text == "":
-        return text
-    elif 'K' in text:
-        return int(float(text[:text.find('K')])*1e3)
-    elif 'M' in text:
-        return int(float(text[:text.find('M')])*1e6)
-    else:
-        return int(text)
+    try:
+        if type(text)==type(0) or text == "":
+            return text
+        elif 'K' in text:
+            return int(float(text[:text.find('K')])*1e3)
+        elif 'M' in text:
+            return int(float(text[:text.find('M')])*1e6)
+        else:
+            return int(text)
+    except:
+        return 'None'
 
 
-def load_information(lst, browser_name=None):
+def load_information(url, browser_name=None, video_duration=None, time_play=None):
     all_comments = pd.DataFrame([], columns=['video_link', 'channel_link', 'channel_name', 'text', 'nb_like'])
-    all_infos = pd.DataFrame([], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub'])
-    for url in lst:
-        browser = start_browser(url=url, browser=browser_name)
-        scroll_page(browser, int(NB_COMMENTS/10), TIME_BETWEEN_SCROLL)
-        comments = get_comments_with_author(browser,NB_COMMENTS)
-        df_comments = pd.DataFrame(comments, columns=['channel_link', 'channel_name', 'text', 'nb_like'])
-        df_comments['video_link'] = url
-        df_comments['nb_like'] = df_comments['nb_like'].apply(format_like_number)
-        all_comments = pd.concat([all_comments,df_comments])
-        all_infos = pd.concat([all_infos,pd.DataFrame([get_video_information(browser,url)], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub'])])
-        browser.close()
+    all_infos = pd.DataFrame([], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
+    
+    browser = start_browser(url=url, browser=browser_name)
+    scroll_page(browser, NB_COMMENTS, TIME_BETWEEN_SCROLL)
+    comments = get_comments_with_author(browser,NB_COMMENTS)
+    df_comments = pd.DataFrame(comments, columns=['channel_link', 'channel_name', 'text', 'nb_like'])
+    df_comments['video_link'] = url
+    df_comments['nb_like'] = df_comments['nb_like'].apply(format_like_number)
+    all_comments = df_comments
+    all_infos = pd.DataFrame([get_video_information(browser, url, video_duration=video_duration, time_play=video_duration)], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
+    browser.close()
 
     all_comments = all_comments.reset_index(drop=True)
     all_infos = all_infos.reset_index(drop=True)
     
     return all_comments, all_infos
 
-def save_dataframes(df_comments, df_infos, df_home_video, compression=COMPRESSION, encoding=ENCODING, path=DATA_PATH):
+def save_dataframes(df_comments, df_infos, df_home_video, df_themes, compression=COMPRESSION, encoding=ENCODING, path=DATA_PATH):
     """
     Save the dataframes to a disk file
     :param df_comments: the dataframe containing the comments information
@@ -331,9 +478,10 @@ def save_dataframes(df_comments, df_infos, df_home_video, compression=COMPRESSIO
     :param path: folder in which to save the files
     """
     path = path.replace('/', split)
-    df_comments.to_csv(path+COMMENTS_DF_PATH, compression=compression,encoding=encoding)
-    df_infos.to_csv(path+VIDEOS_DF_PATH,compression=compression,encoding=encoding)
-    df_home_video.to_csv(path+HOME_VIDEOS_DF_PATH,compression=compression,encoding=encoding)
+    df_comments.to_csv(f'{path}.{COMMENTS_DF_PATH}', compression=compression,encoding=encoding)
+    df_infos.to_csv(f'{path}.{VIDEOS_DF_PATH}',compression=compression,encoding=encoding)
+    df_home_video.to_csv(f'{path}.{HOME_VIDEOS_DF_PATH}',compression=compression,encoding=encoding)
+    df_themes.to_csv(f'{path}.{THEME_DF_PATH}',compression=compression,encoding=encoding)
 
 def load_dataframes(compression=COMPRESSION, encoding=ENCODING,path=DATA_PATH):
     """
@@ -344,6 +492,7 @@ def load_dataframes(compression=COMPRESSION, encoding=ENCODING,path=DATA_PATH):
     :return: the two dataframes containing comment informations and video informations
     """
     return \
-        pd.read_csv(path+COMMENTS_DF_PATH,compression=compression,encoding=encoding),\
-        pd.read_csv(path+VIDEOS_DF_PATH,compression=compression,encoding=encoding),\
-        pd.read_csv(path+HOME_VIDEOS_DF_PATH,compression=compression,encoding=encoding)
+        pd.read_csv(f'{path}.{COMMENTS_DF_PATH}',compression=compression,encoding=encoding, index_col=0),\
+        pd.read_csv(f'{path}.{VIDEOS_DF_PATH}',compression=compression,encoding=encoding, index_col=0),\
+        pd.read_csv(f'{path}.{HOME_VIDEOS_DF_PATH}',compression=compression,encoding=encoding, index_col=0),\
+        pd.read_csv(f'{path}.{THEME_DF_PATH}',compression=compression,encoding=encoding, index_col=0)
