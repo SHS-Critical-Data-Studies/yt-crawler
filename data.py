@@ -14,6 +14,7 @@ WATCH_TIME_VIDEOS = 60 * 15#25
 
 VIDEOS_DF_PATH = f"infos.csv.{COMPRESSION}"
 THEME_DF_PATH = f"theme.csv.{COMPRESSION}"
+ALL_INFOS_DF_PATH = f"all_infos.csv.{COMPRESSION}"
 CRITERIA = [lambda x: x<5e3, lambda x: x>=5e3 and x<5e4, lambda x: x>=5e4]
 
 
@@ -60,7 +61,7 @@ def merge_data(compression=COMPRESSION, encoding=ENCODING, path=DATA_PATH):
         all_infos = pd.concat([all_infos, df_infos])
 
     all_infos['video_id_in_run'] = df_infos.groupby(['walk']).cumcount()
-    all_infos.to_csv(f'{path}{split}all_infos.csv.{COMPRESSION}',compression=compression,encoding=encoding)
+    all_infos.to_csv(f'{path}{split}{ALL_INFOS_DF_PATH}',compression=compression,encoding=encoding)
 
     return all_infos
         
