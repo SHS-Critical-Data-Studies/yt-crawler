@@ -115,7 +115,7 @@ def start_browser(url="https://www.youtube.com", browser=None, agree=True):
 def get_next_video_id(max_accepted_value, excluded_nb, mean_poisson = 2.5):
     cur = -1
     while( cur < 0 or cur >= max_accepted_value or cur in excluded_nb):
-        cur = np.random.poisson(mean_poisson)
+        cur = int(np.random.poisson(mean_poisson))
     return cur 
 
 def click_on_next_video(browser, next_video_position=0, first_video=False):
@@ -151,11 +151,14 @@ def click_on_next_video(browser, next_video_position=0, first_video=False):
     
     excl = []
     while cont and len(excl)<max_cpt:
-        cpt = get_next_video_id(max_cpt, excl)
-        if nlp(titles[cpt])._.language['language'] == LANGUAGE_TO_USE:
-            cont = False
-        else:
+        cpt = int(get_next_video_id(max_cpt, excl))
+        if cpt < 0 or cpt >= len(videos):
             excl.append(cpt)
+        else:
+            if nlp(titles[cpt])._.language['language'] == LANGUAGE_TO_USE:
+                cont = False
+            else:
+                excl.append(cpt)
     
     href = videos[cpt].get_property('href')
     browser.get(href)
@@ -192,33 +195,37 @@ def get_starting_videos_diff_magnitude(keywords, criteria=CRITERIA, browser_name
     # Dictionnary to store the results
     result = {}
     start_scrolls = 0
+    nb_live = 0
     while not full and cpt < 1000:
         while(cpt >= len(all_videos)):
-            scroll_page(br, 10, from_scrolls=(start_scrolls)*10 + 1)
+            scroll_page(br, 10, delay=1, from_scrolls=(start_scrolls)*10 + 1)
             all_videos = br.find_elements(By.XPATH, DIV)
             start_scrolls += 1
             time.sleep(1)
-        
-        # get the number of views as int
-        views = br.find_elements(By.XPATH,f"{DIV}//span[contains(@class,'ytd-video-meta-block') and contains(text(),'views')]")[cpt].text
-        views = views[0: len(views)-len(" views")]
-        views = format_like_number(views)
-        
-        if(views !='None'):
-            for i, cr in enumerate(criteria):
-                # Check if the video satisfies any of the remaining criteria
-                if i not in result and (cr(views)):
-                    # Get relevant attributes 
-                    title = br.find_elements(By.XPATH, f"{DIV}//h3[contains(@class,'title-and-badge')]")[cpt].text
-                    desc = br.find_elements(By.XPATH,f"{DIV}//yt-formatted-string[contains(@class, 'style-scope') and contains(@class, 'ytd-video-renderer')  and contains(@class, 'metadata-snippet-text') and not(contains(@class, 'metadata-snippet-text-navigation')) ]")[cpt].text
+            
+        if("badge-style-type-live-now" in str(all_videos[cpt].get_attribute('innerHTML'))) :
+            nb_live += 1
+        else :
+            # get the number of views as int
+            views = br.find_elements(By.XPATH, f"{DIV}//span[contains(@class,'ytd-video-meta-block') and contains(text(),'views')]")[cpt - nb_live].text
+            views = views[0: len(views)-len(" views")]
+            views = format_like_number(views)
 
-                    # Since the video satisfies the current criterion
-                    # check that it is an english video by checking the title and the description with spacy
-                    if(nlp(title)._.language['language'] == LANGUAGE_TO_USE and nlp(desc)._.language['language'] == LANGUAGE_TO_USE):
-                        # If both detected languages are indeed, the video satisfies the current criterion
-                        result[i] = br.find_elements(By.XPATH, f"{DIV}//a[@id='thumbnail'][@href]")[cpt].get_property('href')
-                        # as we use mutually exclusive criteria, we cannot satisfy another criterion therefore we can safely break the inner loop
-                        break
+            if(views !='None'):
+                for i, cr in enumerate(criteria):
+                    # Check if the video satisfies any of the remaining criteria
+                    if i not in result and (cr(views)):
+                        # Get relevant attributes 
+                        title = br.find_elements(By.XPATH, f"{DIV}//h3[contains(@class,'title-and-badge')]")[cpt].text
+                        desc = br.find_elements(By.XPATH,f"{DIV}//yt-formatted-string[contains(@class, 'style-scope') and contains(@class, 'ytd-video-renderer')  and contains(@class, 'metadata-snippet-text') and not(contains(@class, 'metadata-snippet-text-navigation')) ]")[cpt].text
+
+                        # Since the video satisfies the current criterion
+                        # check that it is an english video by checking the title and the description with spacy
+                        if(nlp(title)._.language['language'] == LANGUAGE_TO_USE and nlp(desc)._.language['language'] == LANGUAGE_TO_USE):
+                            # If both detected languages are indeed, the video satisfies the current criterion
+                            result[i] = br.find_elements(By.XPATH, f"{DIV}//a[@id='thumbnail'][@href]")[cpt].get_property('href')
+                            # as we use mutually exclusive criteria, we cannot satisfy another criterion therefore we can safely break the inner loop
+                            break
         # Check ending conditions, i.e. if we have aas many criteria as results (i.e. if we find one video for each criterion)
         full = (len(result) == len(criteria))
         # Increment the counter to go to the next vidoe
@@ -239,7 +246,7 @@ def get_theme(browser_name=None, nb=8):
     world = browser.find_element(By.XPATH, '//div[@aria-label="World"]/a').get_attribute('href')
     browser.get(world)
     time.sleep(1)
-    scroll_page(browser, 10)
+    scroll_page(browser, 10, delay=1)
     time.sleep(1)
     titles = browser.find_elements(By.XPATH, '//c-wiz//c-wiz/div/div/div/main/c-wiz/div/div/main/div/div//h3/a')
     
@@ -289,7 +296,6 @@ def run_experiment(filename, browser_name=None, version=None, theme=None, url=No
                     url = tmp[0]
                 browser.get(url)
                 themes = pd.DataFrame(theme)
-                
                 time.sleep(2)
             elif(url != None and cpt==0):
                 tmp = []
