@@ -557,12 +557,12 @@ def save_dataframes(df_comments, df_infos, df_home_video, df_themes, compression
     :param path: folder in which to save the files
     """
     path = path.replace('/', split)
-    df_comments.to_csv(f'{path}.{COMMENTS_DF_PATH}', compression=compression,encoding=encoding)
-    df_infos.to_csv(f'{path}.{VIDEOS_DF_PATH}',compression=compression,encoding=encoding)
-    df_home_video.to_csv(f'{path}.{HOME_VIDEOS_DF_PATH}',compression=compression,encoding=encoding)
-    df_themes.to_csv(f'{path}.{THEME_DF_PATH}',compression=compression,encoding=encoding)
+    df_comments.to_csv(f'{path}.{COMMENTS_DF_PATH}', compression=compression, encoding=encoding)
+    df_infos.to_csv(f'{path}.{VIDEOS_DF_PATH}', compression=compression, encoding=encoding)
+    df_home_video.to_csv(f'{path}.{HOME_VIDEOS_DF_PATH}', compression=compression, encoding=encoding)
+    df_themes.to_csv(f'{path}.{THEME_DF_PATH}', compression=compression, encoding=encoding)
 
-def load_dataframes(compression=COMPRESSION, encoding=ENCODING,path=DATA_PATH):
+def load_dataframes(compression=COMPRESSION, encoding=ENCODING, path=DATA_PATH):
     """
     Load dataframe from disk
     :param compression: the compression algorithm that should be used
@@ -571,7 +571,7 @@ def load_dataframes(compression=COMPRESSION, encoding=ENCODING,path=DATA_PATH):
     :return: the two dataframes containing comment informations and video informations
     """
     return \
-        pd.read_csv(f'{path}.{COMMENTS_DF_PATH}',compression=compression,encoding=encoding, index_col=0),\
-        pd.read_csv(f'{path}.{VIDEOS_DF_PATH}',compression=compression,encoding=encoding, index_col=0),\
-        pd.read_csv(f'{path}.{HOME_VIDEOS_DF_PATH}',compression=compression,encoding=encoding, index_col=0),\
-        pd.read_csv(f'{path}.{THEME_DF_PATH}',compression=compression,encoding=encoding, index_col=0)
+        pd.read_csv(f'{path}.{COMMENTS_DF_PATH}', compression=compression, encoding=encoding, index_col=0),\
+        pd.read_csv(f'{path}.{VIDEOS_DF_PATH}', compression=compression, encoding=encoding, index_col=0),\
+        pd.read_csv(f'{path}.{HOME_VIDEOS_DF_PATH}', compression=compression, encoding=encoding, index_col=0),\
+        pd.read_csv(f'{path}.{THEME_DF_PATH}', compression=compression, encoding=encoding, index_col=0)
