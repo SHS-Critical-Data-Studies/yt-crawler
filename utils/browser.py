@@ -49,9 +49,14 @@ THEME_DF_PATH = f"theme.csv.{COMPRESSION}"
 def start_browser(url="https://www.youtube.com", browser=None, agree=True):
     """
     Start and return the browser loaded at a given url
-    
-    :param url:
-    :return: the selenium browser instance
+    Parameters:
+    -----------
+        - url: start the browser on this url
+        - browser: browser name to start
+        - agree: if true, accept the popup on youtube
+    Returns:
+    -----------
+        - browser: the selenium browser instance
     """
     env_key = "YTCRAWLER_BROWSER"
     path = os.getcwd()
@@ -110,21 +115,34 @@ def start_browser(url="https://www.youtube.com", browser=None, agree=True):
                 buttons += 1
     return browser
 
-
-# +
 def get_next_video_id(max_accepted_value, excluded_nb, mean_poisson = 2.5):
+    """
+    Get next video id in range [0, `max_accepted_value`) \ excluded_nb
+    Parameters:
+    -----------
+        - max_accepted_value: maximum number of id
+        - excluded_nb: list of excluded id
+        - mean_poisson: mean of poisson distribution
+    Returns:
+    -----------
+        - id: random id
+    """
     cur = -1
     while( cur < 0 or cur >= max_accepted_value or cur in excluded_nb):
         cur = int(np.random.poisson(mean_poisson))
     return cur 
 
-def click_on_next_video(browser, next_video_position=0, first_video=False):
+def click_on_next_video(browser, first_video=False):
     """
     Click on the required next video and return the link of that video.
-    
-    :param browser: the selenium browser instance
-    :param next_video_position: the next video position on which we should click (default is 0)
-    :return: the link of the video on which we clicked
+    Parameters:
+    -----------
+        - browser: the selenium browser instance
+        - first_video: True if, and only if, the next video is on homepage
+    Returns:
+    -----------
+        - href: the link of the video on which we clicked
+        - url: list of URL that coud be selected
     """
     titles = []
     videos = []
@@ -162,15 +180,9 @@ def click_on_next_video(browser, next_video_position=0, first_video=False):
     
     href = videos[cpt].get_property('href')
     browser.get(href)
-    #videos[cpt].click()
-    #time.sleep(1)
-    #browser.refresh()
     time.sleep(2)
     
     return href, url
-
-
-# -
 
 def get_starting_videos_diff_magnitude(keywords, criteria=CRITERIA, browser_name=None):
     """
@@ -179,7 +191,7 @@ def get_starting_videos_diff_magnitude(keywords, criteria=CRITERIA, browser_name
     -----------
         - criteria: the list of criterion we want to satisfy
         - keywords: the list of keywords to search in order to get the videos
-        - browser_name: 
+        - browser_name: browser name to start
     Returns:
     -----------
         - a dictionnary of videos satisfying the given criteria (criterion index -> url of the videos)
@@ -233,8 +245,17 @@ def get_starting_videos_diff_magnitude(keywords, criteria=CRITERIA, browser_name
     br.close()
     return [result[i] for i in range(len(criteria))]
 
-
 def get_theme(browser_name=None, nb=8):
+    """
+    Get themes from news.google.com
+    Parameters:
+    -----------
+        - browser_name: browser name to start
+        - nb: number of themes
+    Returns:
+    -----------
+        - themes: list of themes
+    """
     browser = start_browser(url='https://news.google.com/topstories?hl=en&gl=CH', browser=browser_name, agree=False)
     time.sleep(1)
     buttons = browser.find_elements(By.XPATH  ,'//span')
@@ -260,9 +281,16 @@ def get_theme(browser_name=None, nb=8):
     browser.close()
     return [[str(i) for i in l] for l in text]
 
-
-# +
 def time_as_sec(time_str):
+    """
+    Convert string time to int
+    Parameters:
+    -----------
+        - time_str: the time string to convert
+    Returns:
+    -----------
+        - time: result of conversion
+    """
     time_int = 0
     coef = 1
     for i in time_str.split(':')[::-1]:
@@ -273,6 +301,20 @@ def time_as_sec(time_str):
 def run_experiment(filename, browser_name=None, version=None, theme=None, url=None):
     """
     Run one experiment with the set parameters
+    Parameters:
+    -----------
+        - filename: The name of the experiment
+        - browser_name: The name of the browser
+        - version: The version of the experiment
+        - theme: The theme to use for run
+        - url: The URL to start the experiment
+    Returns:
+    -----------
+        - watched_videos: list of videos watched on the experiment
+        - all_comments: list of all comments on the experiment
+        - all_infos: all info about the experiment
+        - home_video: list of videos on homepage
+        - themes: selected theme or `None`
     """
     browser = start_browser(browser=browser_name)
     cpt=0
@@ -335,15 +377,16 @@ def run_experiment(filename, browser_name=None, version=None, theme=None, url=No
         browser.close()
     return watched_videos, all_comments, all_infos, home_video, themes
 
-
-# -
-
 # Etape 2: Choper les infos des vidéos
 def get_description(browser):
     """
     Get the description of the videos currently loaded
-    :param browser: The selenium browser instance
-    :return: the description of the video
+    Parameters:
+    -----------
+        - browser: the selenium browser instance
+    Returns:
+    -----------
+        - text: description of the videos
     """
     text = ""
     elems = browser.find_elements(By.XPATH, "//div[@id='description' and contains(@class, 'ytd-video-secondary-info-renderer') ]//*[contains(@class, 'yt-formatted-string')]")
@@ -359,9 +402,13 @@ def get_description(browser):
 def get_comments_with_author(browser, nb_comments):
     """
     Get the required number of comments with author information
-    :param browser: the selenium browser instance
-    :param nb_comments: The number of comments we wish to get
-    :return: list of all comments with author information
+    Parameters:
+    -----------
+        - browser: the selenium browser instance
+        - nb_comments: the number of comments to get
+    Returns:
+    -----------
+        - comments: list of all comments with author information
     """
     all_text = browser.find_elements(By.XPATH,"//ytd-comments[@id='comments']//yt-formatted-string[@id='content-text']")
     authors = browser.find_elements(By.XPATH,"//ytd-comments[@id='comments']//a[@id='author-text']")
@@ -379,9 +426,12 @@ def get_comments_with_author(browser, nb_comments):
 def scroll_page(browser, nb_scrolls, delay=3, from_scrolls = 1):
     """
     Scroll the browser page a given number of time
-    :param browser: the selenium browser instance
-    :param nb_scrolls: the number of time we should scroll
-    :param delay: delay between scroll
+    Parameters:
+    -----------
+        - browser: the selenium browser instance
+        - nb_scrolls: the number of scroll
+        - delay: the number of seconds to wait before next scroll
+        - from_scrolls: the number of scroll already done before
     """
     for i in range(int(from_scrolls), int(nb_scrolls)):
         browser.execute_script("const height = window.innerHeight||document.documentElement.clientHeight||document.body.clientHeight;"+
@@ -391,9 +441,15 @@ def scroll_page(browser, nb_scrolls, delay=3, from_scrolls = 1):
 def get_video_information(browser, url, video_duration=None, time_play=None):
     """
     Get all the video information currently loaded in the browser
-    :param browser: the selenium browser instance
-    :param url: the url of the video
-    :return: a list of all the information of the videos (url, title, description, channel name, channel link, tags)
+    Parameters:
+    -----------
+        - browser: the selenium browser instance
+        - url: the url of the video
+        - video_duration: the duration of the video
+        - time_play: the watched time of the video
+    Returns:
+    -----------
+        - infos: a list of all the information of the videos
     """
     infos=[]
     
@@ -438,8 +494,12 @@ def get_video_information(browser, url, video_duration=None, time_play=None):
 def format_like_number(text):
     """
     Format the given text to a number
-    :param text: the text that should be converted to number
-    :return: the number in int
+    Parameters:
+    -----------
+        - text: the text that should be converted to number
+    Returns:
+    -----------
+        - likes: the number in int or `None`
     """
     try:
         if type(text)==type(0) or text == "":
@@ -455,6 +515,19 @@ def format_like_number(text):
 
 
 def load_information(url, browser_name=None, video_duration=None, time_play=None):
+    """
+    Load information of a video
+    Parameters:
+    -----------
+        - url: The URL of the video
+        - browser_name: The name of the browser
+        - video_duration: The duration of the video
+        - time_play: The watched time of the video
+    Returns:
+    -----------
+        - all_comments: A list of all comments
+        - all_infos: A list of all information about the video
+    """
     all_comments = pd.DataFrame([], columns=['video_link', 'channel_link', 'channel_name', 'text', 'nb_like'])
     all_infos = pd.DataFrame([], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
     
@@ -465,7 +538,7 @@ def load_information(url, browser_name=None, video_duration=None, time_play=None
     df_comments['video_link'] = url
     df_comments['nb_like'] = df_comments['nb_like'].apply(format_like_number)
     all_comments = df_comments
-    all_infos = pd.DataFrame([get_video_information(browser, url, video_duration=video_duration, time_play=video_duration)], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
+    all_infos = pd.DataFrame([get_video_information(browser, url, video_duration=video_duration, time_play=time_play)], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
     browser.close()
 
     all_comments = all_comments.reset_index(drop=True)
