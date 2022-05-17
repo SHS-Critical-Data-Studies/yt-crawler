@@ -297,7 +297,7 @@ def time_as_sec(time_str):
         time_int += int(i)*coef
         coef*=60
     return time_int
-    
+
 def run_experiment(filename, browser_name=None, version=None, theme=None, url=None):
     """
     Run one experiment with the set parameters

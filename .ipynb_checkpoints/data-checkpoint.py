@@ -79,6 +79,6 @@ def merge_data(compression=COMPRESSION, encoding=ENCODING, path=DATA_PATH):
 
 
 if __name__ == '__main__':
-    merge_data(path=f'{DATA_PATH}P5')
+    merge_data(path=f'{DATA_PATH}P4')
 
 
