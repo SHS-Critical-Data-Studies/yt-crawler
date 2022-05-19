@@ -1,17 +1,15 @@
 import os
+from os import listdir, makedirs
+from os.path import isfile, isdir, join
 from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.action_chains import ActionChains
 import time
-from datetime import datetime, timedelta
 import pandas as pd
 from selenium import webdriver
 import spacy
 from spacy_langdetect import LanguageDetector
 from spacy.language import Language
-from random import randrange
 import numpy as np
 import en_core_web_sm
 nlp = en_core_web_sm.load()
@@ -44,6 +42,7 @@ COMMENTS_DF_PATH = f"comments.csv.{COMPRESSION}"
 VIDEOS_DF_PATH = f"infos.csv.{COMPRESSION}"
 HOME_VIDEOS_DF_PATH = f"first.csv.{COMPRESSION}"
 THEME_DF_PATH = f"theme.csv.{COMPRESSION}"
+ALL_INFOS_DF_PATH = f"all_infos.csv.{COMPRESSION}"
 
 
 def start_browser(url="https://www.youtube.com", browser=None, agree=True):
@@ -324,7 +323,7 @@ def run_experiment(filename, browser_name=None, version=None, theme=None, url=No
     themes = pd.DataFrame([])
     
     all_comments = pd.DataFrame([], columns=['video_link', 'channel_link', 'channel_name', 'text', 'nb_like'])
-    all_infos = pd.DataFrame([], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
+    all_infos = pd.DataFrame([], columns=['video_link', 'title', 'description', 'channel_title', 'channel_link', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
     try:
         while (cpt<MAX_VIDEOS and not USE_TIME) or (tot<MAX_TOTAL_TIME and USE_TIME):
             time.sleep(2)
@@ -528,8 +527,9 @@ def load_information(url, browser_name=None, video_duration=None, time_play=None
         - all_comments: A list of all comments
         - all_infos: A list of all information about the video
     """
+    columns = ['video_link', 'title', 'description', 'channel_title', 'channel_link', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch_time']
     all_comments = pd.DataFrame([], columns=['video_link', 'channel_link', 'channel_name', 'text', 'nb_like'])
-    all_infos = pd.DataFrame([], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
+    all_infos = pd.DataFrame([], columns=columns)
     
     browser = start_browser(url=url, browser=browser_name)
     scroll_page(browser, NB_COMMENTS, TIME_BETWEEN_SCROLL)
@@ -538,13 +538,114 @@ def load_information(url, browser_name=None, video_duration=None, time_play=None
     df_comments['video_link'] = url
     df_comments['nb_like'] = df_comments['nb_like'].apply(format_like_number)
     all_comments = df_comments
-    all_infos = pd.DataFrame([get_video_information(browser, url, video_duration=video_duration, time_play=time_play)], columns=['video_link', 'title', 'description', 'channel_link', 'channel_title', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch time'])
+    all_infos = pd.DataFrame([get_video_information(browser, url, video_duration=video_duration, time_play=time_play)], columns=columns)
     browser.close()
 
     all_comments = all_comments.reset_index(drop=True)
     all_infos = all_infos.reset_index(drop=True)
     
     return all_comments, all_infos
+
+check = lambda x : x == 'None' or pd.isna(x)
+
+def get(df, b):
+    if(sum(df.apply(check)) > 0):
+        url = df['video_link']
+        print(url)
+        b.get(url)
+        time.sleep(2)
+
+        txt = b.find_element(By.XPATH,"//div[contains(@class,'ytp-bound-time-right')]").get_property('innerHTML')
+        video_duration = max(time_as_sec(txt), 0)
+        vd = max(video_duration-VIDEO_TIME_OFFSET, 0)
+        time_play = min(WATCH_TIME_VIDEOS, vd if vd != 0 else WATCH_TIME_VIDEOS)
+
+        ls = get_video_information(b, url, video_duration=video_duration, time_play=time_play)
+        
+        def add(txt, id_):
+            if(check(df[txt])):
+                df[txt] = ls[id_]
+                
+        add('title', 1)
+        add('description', 2)
+        add('channel_title', 3)
+        add('channel_link', 4)
+        add('keywords', 5)
+        add('nb_like', 6)
+        add('nb_views', 7)
+        add('nb_sub', 8)
+        add('video_duration', 9)
+        add('watch time', 10)
+    
+    return df
+    
+def reload_data(path = 'data'):
+    encoding = 'utf-8'
+    compression = 'bz2'
+
+    if(not isdir(join(path, 'tmp'))):
+        makedirs(join(path, 'tmp'))
+
+    files = [f for f in listdir(path) if 'infos'in f and isfile(join(path, f))]
+    b = start_browser(browser='firefox')
+    for f in files:
+        if(not isfile(join(path, 'tmp', f))):
+            print(f)
+            df = pd.read_csv(join(path, f), compression=compression,encoding=encoding, index_col=0)
+            tmp = df.apply(lambda r : get(r, b), axis=1)
+            tmp.to_csv(join(path, 'tmp', f),compression=compression,encoding=encoding)
+        else :
+            df = pd.read_csv(join(path, f), compression=compression,encoding=encoding, index_col=0)
+            df_tmp = pd.read_csv(join(path, 'tmp', f), compression=compression,encoding=encoding, index_col=0)
+            print(f, len(df), len(df_tmp))
+    b.close()
+
+def merge_data(compression=COMPRESSION, encoding=ENCODING, path=DATA_PATH):
+    """
+    Merge all infos files into one info file
+    """
+    columns = ['walk', 'theme_id', 'theme', 'video_id_in_run', 'video_link', 'title', 'description', 'channel_title', 'channel_link', 'keywords', 'nb_like', 'nb_views', 'nb_sub', 'video_duration', 'watch_time']
+    print(path)
+    all_infos = pd.DataFrame([], columns=columns)
+    
+    theme_ids = {}
+    last_theme_id = {}
+
+    for filename in [filename for filename in listdir(path) if (filename.endswith(VIDEOS_DF_PATH) and isfile(f'{path}{split}{filename}'))]:
+        filename = filename[0:-(len(VIDEOS_DF_PATH) + 1)]
+
+        process_id = int(filename.split('.')[-1])
+
+        df_infos = pd.read_csv(f'{path}{split}{filename}.{VIDEOS_DF_PATH}', compression=compression, encoding=encoding, index_col=0)
+        df_theme = pd.read_csv(f'{path}{split}{filename}.{THEME_DF_PATH}', compression=compression, encoding=encoding, index_col=0)
+
+        theme_text = []
+        df_theme['0'].apply(lambda x:theme_text.extend(x.split(' ')))
+        theme_text = list(set(theme_text))
+        theme_text.sort()
+        theme_text = ' '.join(theme_text)
+
+        if(process_id in last_theme_id and last_theme_id[process_id].split(':')[1] == theme_text):
+            pass
+        else:
+            idx = 0
+            if(theme_text in theme_ids):
+                idx = theme_ids[theme_text] + 1
+            theme_ids[theme_text] = idx
+            last_theme_id[process_id] = f'{idx}:{theme_text}'
+        
+        df_infos['walk'] = filename
+        df_infos['theme_id'] = last_theme_id[process_id]
+        df_infos['theme'] = theme_text
+
+        df_infos['watch time'] = df_infos['watch time'].apply(lambda x:min(int(x), WATCH_TIME_VIDEOS))
+
+        all_infos = pd.concat([all_infos, df_infos])
+
+    all_infos['video_id_in_run'] = df_infos.groupby(['walk']).cumcount()
+    all_infos.to_csv(f'{path}{split}{ALL_INFOS_DF_PATH}',compression=compression,encoding=encoding)
+
+    return all_infos
 
 def save_dataframes(df_comments, df_infos, df_home_video, df_themes, compression=COMPRESSION, encoding=ENCODING, path=DATA_PATH):
     """

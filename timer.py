@@ -1,13 +1,7 @@
-# +
-# %load_ext autoreload
-# %autoreload 2
-
-from datetime import datetime, timedelta
+from datetime import datetime
 from time import sleep
 from utils import browser
 from utils import logs
-from threading import Thread
-import pandas as pd
 import sys
 
 browser_name = "firefox"
@@ -16,11 +10,9 @@ version = 'P5'
 def experiment(number, theme, url):
     sleep(60*number)
     filename = f'{datetime.now().strftime("%Y_%m_%d.%H_%M_%S")}.{number}'
-    watched_videos, all_comments, all_infos, home_video, themes = browser.run_experiment(filename, browser_name=browser_name, version=version, theme=theme, url=url)
+    watched_videos, _, _, _, _ = browser.run_experiment(filename, browser_name=browser_name, version=version, theme=theme, url=url)
     logs.dump(f"{filename}.txt", watched_videos)
 
-
-# +
 start_time = [ "08:00", "12:45", "17:30", "22:15", "03:00" ]
 start_time_ct = [start_time[i].split(':') for i in range(len(start_time))]
 start_time_ct = [(int(start_time_ct[i][0]) * 60 + int(start_time_ct[i][1])) * 60 for i in range(len(start_time))]
@@ -52,6 +44,3 @@ if __name__ == "__main__":
             dt = min(start_time_ct[i] - ct if(start_time_ct[i] - ct > 0) else start_time_ct[i] - ct + (24*60*60) for i in range(len(start_time))) - 60
             sleep(max(1, dt))
         last_time = current_time
-# -
-
-
