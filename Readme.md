@@ -53,3 +53,10 @@ On this page, it get all the data collected `video_link`[1], `title`[2], `descri
 For the comments, it get top `browser.NB_COMMENTS` of them and gt the data `video_link`, `channel_link`, `channel_name`, `text`, `nb_like`.
 After the `video_duration` of the video or the `browser.WATCH_TIME_VIDEOS` it go to the next random video select from the `browser.MAX_VIDEO_POSITION` videos on the right[7].
 And do it for at least `browser.MAX_TOTAL_TIME`.
+
+ ## Authors
+- Alessio Verardo
+- Cyrille Pittet
+- Hugo Lanfranchi
+- Noé De Santo
+- Robin Plumey
